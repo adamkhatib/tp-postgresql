@@ -269,3 +269,218 @@ select * from test_users;
        3 | charlie  | charlie@example.com | 2026-08-24 14:30:27.033511+02
 (3 lignes)
 ```
+
+## reprise du tp dans la bonne base
+
+je vérifie d'abord que je peux me connecter en tcp à la base attendue avec le rôle créé dans l'exercice 1.1.
+
+```console
+$ psql -h 127.0.0.1 -U labuser -d blogapp_lab
+    base     | utilisateur
+-------------+-------------
+ blogapp_lab | labuser
+(1 ligne)
+```
+
+je recrée ensuite 'test_users' dans 'blogapp_lab'. la table appartient bien à 'labuser'.
+
+```text
+            liste des relations
+ schéma |    nom     | type  | propriétaire
+--------+------------+-------+--------------
+ public | test_users | table | labuser
+(1 ligne)
+```
+
+j'insère à nouveau les trois lignes de départ afin de poursuivre les exercices dans la bonne base.
+
+```text
+ user_id | username |        email        |          created_at
+---------+----------+---------------------+-------------------------------
+       1 | alice    | alice@example.com   | 2026-08-25 11:26:00.884596+02
+       2 | bob      | bob@example.com     | 2026-08-25 11:26:00.886521+02
+       3 | charlie  | charlie@example.com | 2026-08-25 11:26:00.886521+02
+(3 lignes)
+```
+
+## exercice 1.6 : mettre à jour et supprimer
+
+je modifie l'adresse e-mail d'alice.
+
+```sql
+update test_users
+set email = 'alice.new@example.com'
+where username = 'alice';
+```
+
+```text
+UPDATE 1
+ user_id | username |         email
+---------+----------+-----------------------
+       1 | alice    | alice.new@example.com
+(1 ligne)
+```
+
+je supprime ensuite 'charlie', puis je contrôle le contenu restant.
+
+```sql
+delete from test_users where username = 'charlie';
+select user_id, username, email from test_users order by user_id;
+```
+
+```text
+DELETE 1
+ user_id | username |         email
+---------+----------+-----------------------
+       1 | alice    | alice.new@example.com
+       2 | bob      | bob@example.com
+(2 lignes)
+```
+
+## exercice 1.7 : pratiquer les transactions
+
+je commence par tester une transaction annulée.
+
+```sql
+begin;
+insert into test_users (username, email)
+values ('dave', 'dave@example.com');
+rollback;
+
+select count(*) as dave_apres_rollback
+from test_users
+where username = 'dave';
+```
+
+le 'rollback' annule correctement l'insertion.
+
+```text
+ dave_apres_rollback
+---------------------
+                   0
+(1 ligne)
+```
+
+je rejoue ensuite l'insertion et je la valide avec 'commit'.
+
+```sql
+begin;
+insert into test_users (username, email)
+values ('dave', 'dave@example.com');
+commit;
+
+select user_id, username, email from test_users order by user_id;
+```
+
+```text
+ user_id | username |         email
+---------+----------+-----------------------
+       1 | alice    | alice.new@example.com
+       2 | bob      | bob@example.com
+       5 | dave     | dave@example.com
+(3 lignes)
+```
+
+l'identifiant '5' est normal. la séquence a aussi avancé pendant la transaction annulée.
+
+## exercice 1.8 : nettoyage
+
+je supprime la table de test comme demandé dans le sujet.
+
+```sql
+drop table test_users;
+```
+
+```text
+DROP TABLE
+Aucune relation n'a été trouvée.
+```
+
+je supprime également la première table de test créée par erreur dans la base 'postgres'. une vérification finale confirme qu'il ne reste aucune table utilisateur dans 'postgres' ni dans 'blogapp_lab'.
+
+## défi optionnel : table notes
+
+je réalise aussi le défi optionnel proposé à la fin du laboratoire. je crée une table 'notes' contenant les colonnes 'note_id', 'title', 'content' et 'created_at', puis j'insère cinq notes.
+
+```sql
+create table notes (
+    note_id serial primary key,
+    title varchar(200) not null,
+    content text not null,
+    created_at timestamptz default current_timestamp
+);
+
+insert into notes (title, content) values
+    ('installation', 'postgresql 17 est installe'),
+    ('connexion', 'la connexion psql fonctionne'),
+    ('pgadmin', 'le serveur est visible depuis windows'),
+    ('transactions', 'rollback et commit sont valides'),
+    ('nettoyage', 'les tables de test seront supprimees');
+```
+
+la requête sur la date du jour retourne bien les cinq notes.
+
+```sql
+select note_id, title
+from notes
+where created_at::date = current_date
+order by note_id;
+```
+
+```text
+ note_id |    title
+---------+--------------
+       1 | installation
+       2 | connexion
+       3 | pgadmin
+       4 | transactions
+       5 | nettoyage
+(5 lignes)
+```
+
+je mets ensuite à jour le titre de la première note.
+
+```sql
+update notes
+set title = 'installation terminee'
+where note_id = 1;
+```
+
+```text
+UPDATE 1
+ note_id |         title
+---------+-----------------------
+       1 | installation terminee
+(1 ligne)
+```
+
+je termine le défi en supprimant toutes les notes puis la table.
+
+```sql
+delete from notes;
+drop table notes;
+```
+
+```text
+DELETE 5
+DROP TABLE
+Aucune relation n'a été trouvée.
+```
+
+## vérifications finales
+
+la configuration finale de la vm est la suivante :
+
+```text
+os                  : debian 13.6 (trixie)
+postgresql          : 17.11
+cluster             : 17/main, port 5432, online
+service             : active et enabled
+listen_addresses    : *
+max_connections     : 100
+shared_buffers      : 128MB
+log_statement       : all
+log_duration        : on
+base du laboratoire : blogapp_lab, propriétaire labuser
+outil graphique     : pgAdmin sur l'hôte Windows
+```
